@@ -1,15 +1,42 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
+import platform
 
 # ---------------------------------------------
 # 페이지 기본 설정
 # ---------------------------------------------
 st.set_page_config(page_title="스마트폰 사용과 공부", layout="wide")
 
-# 한글 폰트 설정 (환경에 따라 폰트가 없을 수 있음)
-plt.rcParams["font.family"] = ["Malgun Gothic", "AppleGothic", "NanumGothic", "DejaVu Sans"]
-plt.rcParams["axes.unicode_minus"] = False
+
+# ---------------------------------------------
+# 한글 폰트 설정 (OS에 맞게 자동 선택)
+# ---------------------------------------------
+def set_korean_font():
+    system = platform.system()
+    if system == "Windows":
+        plt.rcParams["font.family"] = "Malgun Gothic"
+    elif system == "Darwin":
+        plt.rcParams["font.family"] = "AppleGothic"
+    else:
+        # 리눅스(Streamlit Cloud): 설치된 나눔 폰트를 직접 찾아서 등록
+        candidates = [
+            "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+            "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+        ]
+        for path in candidates:
+            try:
+                font_manager.fontManager.addfont(path)
+                font_name = font_manager.FontProperties(fname=path).get_name()
+                plt.rcParams["font.family"] = font_name
+                break
+            except Exception:
+                continue
+    plt.rcParams["axes.unicode_minus"] = False
+
+
+set_korean_font()
 
 st.title("📱 스마트폰 사용은 공부에 방해가 될까?")
 st.caption("자료 출처: 제공된 2015년 조사 자료 2종 (인식 조사)")
