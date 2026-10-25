@@ -1,70 +1,29 @@
+
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib import font_manager
-import platform
-import glob
+import plotly.graph_objects as go
+import plotly.express as px
 
 # ---------------------------------------------
 # 페이지 기본 설정
 # ---------------------------------------------
-st.set_page_config(page_title="스마트폰 사용과 공부", layout="wide")
-
-
-# ---------------------------------------------
-# 한글 폰트 설정 (OS에 맞게 자동 선택)
-# ---------------------------------------------
-def set_korean_font():
-    system = platform.system()
-    font_found = True
-    if system == "Windows":
-        plt.rcParams["font.family"] = "Malgun Gothic"
-    elif system == "Darwin":
-        plt.rcParams["font.family"] = "AppleGothic"
-    else:
-        # 리눅스(Streamlit Cloud): 시스템 전체에서 나눔 폰트 파일을 검색
-        paths = glob.glob("/usr/share/fonts/**/Nanum*.ttf", recursive=True)
-        paths += glob.glob("/usr/share/fonts/**/Nanum*.otf", recursive=True)
-        # NanumGothic 계열을 우선 사용
-        paths.sort(key=lambda p: ("NanumGothic" not in p, p))
-        if paths:
-            for p in paths:
-                font_manager.fontManager.addfont(p)
-            font_name = font_manager.FontProperties(fname=paths[0]).get_name()
-            plt.rcParams["font.family"] = font_name
-        else:
-            font_found = False
-    plt.rcParams["axes.unicode_minus"] = False
-    return font_found
-
-
-font_found = set_korean_font()
-
-# 스트림릿 UI 텍스트용 폰트 보충
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
-    html, body, [class*="css"], textarea {
-        font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
+st.set_page_config(
+    page_title="스마트폰 사용과 공부",
+    page_icon="📱",
+    layout="wide"
 )
 
 st.title("📱 스마트폰 사용은 공부에 방해가 될까?")
 st.caption("자료 출처: 제공된 2015년 조사 자료 2종 (인식 조사)")
 
-if not font_found:
-    st.error("나눔 폰트를 찾지 못했어요. packages.txt에 fonts-nanum이 있는지 확인하고 앱을 Reboot 해보세요.")
-
 # ---------------------------------------------
-# 데이터 (CSV 값을 직접 입력)
+# 데이터
 # ---------------------------------------------
 data = {
-    "구분": ["성인: 스마트폰이 하던 일(공부)에 방해된다",
-             "청소년: 스마트폰 과다 사용으로 성적이 떨어졌다"],
+    "구분": [
+        "성인: 스마트폰이 하던 일(공부)에 방해된다",
+        "청소년: 스마트폰 과다 사용으로 성적이 떨어졌다"
+    ],
     "응답자 수(명)": [13687, 2523],
     "1 전혀 그렇지 않다(%)": [11.3, 26.9],
     "2 그렇지 않다(%)": [46.6, 51.7],
@@ -75,94 +34,204 @@ data = {
     "5점 평균(점)": [2.4, 2.0],
     "100점 환산(점)": [47.3, 32.3],
 }
+
 df = pd.DataFrame(data)
 
 short_names = ["성인(방해)", "청소년(성적 하락)"]
-choice_cols = ["1 전혀 그렇지 않다(%)", "2 그렇지 않다(%)",
-               "3 그렇다(%)", "4 매우 그렇다(%)"]
+
+choice_cols = [
+    "1 전혀 그렇지 않다(%)",
+    "2 그렇지 않다(%)",
+    "3 그렇다(%)",
+    "4 매우 그렇다(%)"
+]
+
+# Plotly 그래프 공통 설정
+chart_layout = {
+    "font": {"family": "Arial, sans-serif", "size": 14},
+    "paper_bgcolor": "white",
+    "plot_bgcolor": "white",
+    "margin": {"l": 30, "r": 30, "t": 45, "b": 45},
+    "legend": {"orientation": "h", "yanchor": "bottom", "y": -0.3},
+    "hovermode": "closest"
+}
 
 # ---------------------------------------------
-# 1. 표
+# 1. 자료 표
 # ---------------------------------------------
 st.header("1. 자료 표")
-st.dataframe(df.set_index("구분"), use_container_width=True)
+
+st.dataframe(
+    df.set_index("구분"),
+    use_container_width=True
+)
 
 # ---------------------------------------------
 # 2. 핵심 지표
 # ---------------------------------------------
 st.header("2. 핵심 지표 비교")
+
 col1, col2 = st.columns(2)
+
 with col1:
-    st.metric("성인 긍정 응답(3+4)", f"{df.loc[0, '긍정(3+4)(%)']}%")
-    st.metric("성인 5점 평균", f"{df.loc[0, '5점 평균(점)']}점")
+    st.subheader("성인")
+    st.metric("긍정 응답(3+4)", "42.1%")
+    st.metric("5점 척도 평균", "2.4점")
+
 with col2:
-    st.metric("청소년 긍정 응답(3+4)", f"{df.loc[1, '긍정(3+4)(%)']}%")
-    st.metric("청소년 5점 평균", f"{df.loc[1, '5점 평균(점)']}점")
+    st.subheader("청소년")
+    st.metric("긍정 응답(3+4)", "21.3%")
+    st.metric("5점 척도 평균", "2.0점")
+
+st.caption(
+    "※ 청소년 긍정 응답은 원자료의 세부 비율 합계 "
+    "19.0% + 2.3% = 21.3%입니다. "
+    "제공된 원자료의 21.4%와 차이가 있어 확인이 필요합니다."
+)
 
 # ---------------------------------------------
 # 3. 그래프
 # ---------------------------------------------
 st.header("3. 그래프")
 
-tab1, tab2, tab3 = st.tabs(["응답 분포(누적 막대)", "긍정 vs 부정", "평균 점수"])
-
-# 탭 1: 100% 누적 가로 막대
-with tab1:
-    fig, ax = plt.subplots(figsize=(9, 3.5))
-    left = [0, 0]
-    colors = ["#9ecae1", "#c6dbef", "#fdae6b", "#e6550d"]
-    for col, color in zip(choice_cols, colors):
-        values = df[col].tolist()
-        ax.barh(short_names, values, left=left, label=col, color=color)
-        for i, v in enumerate(values):
-            ax.text(left[i] + v / 2, i, f"{v}%", ha="center", va="center", fontsize=9)
-        left = [l + v for l, v in zip(left, values)]
-    ax.set_xlabel("비율(%)")
-    ax.set_xlim(0, 100)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=4, fontsize=8)
-    st.pyplot(fig)
-
-# 탭 2: 긍정 vs 부정 묶음 막대
-with tab2:
-    fig, ax = plt.subplots(figsize=(7, 4))
-    x = range(len(short_names))
-    width = 0.35
-    ax.bar([i - width / 2 for i in x], df["부정(1+2)(%)"], width,
-           label="부정(1+2)", color="#6baed6")
-    ax.bar([i + width / 2 for i in x], df["긍정(3+4)(%)"], width,
-           label="긍정(3+4)", color="#fd8d3c")
-    for i in x:
-        ax.text(i - width / 2, df["부정(1+2)(%)"][i] + 1,
-                f"{df['부정(1+2)(%)'][i]}%", ha="center")
-        ax.text(i + width / 2, df["긍정(3+4)(%)"][i] + 1,
-                f"{df['긍정(3+4)(%)'][i]}%", ha="center")
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(short_names)
-    ax.set_ylabel("비율(%)")
-    ax.set_ylim(0, 100)
-    ax.legend()
-    st.pyplot(fig)
-
-# 탭 3: 평균 점수
-with tab3:
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.bar(short_names, df["5점 평균(점)"], color=["#74c476", "#fd8d3c"])
-    for i, v in enumerate(df["5점 평균(점)"]):
-        ax.text(i, v + 0.05, f"{v}점", ha="center")
-    ax.set_ylim(0, 5)
-    ax.set_ylabel("5점 척도 평균")
-    st.pyplot(fig)
+tab1, tab2, tab3 = st.tabs([
+    "응답 분포",
+    "긍정 vs 부정",
+    "평균 점수"
+])
 
 # ---------------------------------------------
-# 4. 해석 시 주의할 점
+# 탭 1: 응답 분포 (100% 누적 가로 막대)
+# ---------------------------------------------
+with tab1:
+    st.subheader("응답 분포 비교")
+
+    fig = go.Figure()
+
+    colors = ["#9ECAE1", "#C6DBEF", "#FDAE6B", "#E6550D"]
+
+    for col, color in zip(choice_cols, colors):
+        fig.add_trace(go.Bar(
+            y=short_names,
+            x=df[col],
+            name=col,
+            orientation="h",
+            marker_color=color,
+            text=df[col].apply(lambda v: f"{v:.1f}%"),
+            textposition="inside",
+            hovertemplate=(
+                "%{y}<br>" + col + ": %{x:.1f}%<extra></extra>"
+            )
+        ))
+
+    fig.update_layout(
+        **chart_layout,
+        barmode="stack",
+        title="응답 항목별 비율",
+        xaxis_title="비율(%)",
+        yaxis_title="",
+        xaxis=dict(range=[0, 100], ticksuffix="%"),
+        height=400
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.info(
+        "성인은 '그렇다'와 '매우 그렇다'의 합이 42.1%이며, "
+        "청소년은 세부 응답 비율 기준 21.3%입니다."
+    )
+
+# ---------------------------------------------
+# 탭 2: 긍정 vs 부정
+# ---------------------------------------------
+with tab2:
+    st.subheader("긍정 응답과 부정 응답 비교")
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=short_names,
+        y=df["부정(1+2)(%)"],
+        name="부정 응답",
+        marker_color="#6BAED6",
+        text=df["부정(1+2)(%)"].apply(lambda v: f"{v:.1f}%"),
+        textposition="outside",
+        hovertemplate="%{x}<br>부정 응답: %{y:.1f}%<extra></extra>"
+    ))
+
+    fig.add_trace(go.Bar(
+        x=short_names,
+        y=df["긍정(3+4)(%)"],
+        name="긍정 응답(원자료)",
+        marker_color="#FD8D3C",
+        text=df["긍정(3+4)(%)"].apply(lambda v: f"{v:.1f}%"),
+        textposition="outside",
+        hovertemplate="%{x}<br>긍정 응답: %{y:.1f}%<extra></extra>"
+    ))
+
+    fig.update_layout(
+        **chart_layout,
+        barmode="group",
+        title="긍정 응답과 부정 응답",
+        xaxis_title="조사 대상",
+        yaxis_title="비율(%)",
+        yaxis=dict(range=[0, 100], ticksuffix="%"),
+        height=430
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+# ---------------------------------------------
+# 탭 3: 평균 점수
+# ---------------------------------------------
+with tab3:
+    st.subheader("5점 척도 평균 비교")
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=short_names,
+        y=df["5점 평균(점)"],
+        marker_color=["#74C476", "#FD8D3C"],
+        text=df["5점 평균(점)"].apply(lambda v: f"{v:.1f}점"),
+        textposition="outside",
+        hovertemplate="%{x}<br>평균: %{y:.1f}점<extra></extra>"
+    ))
+
+    fig.update_layout(
+        **chart_layout,
+        title="스마트폰 사용에 대한 인식 평균",
+        xaxis_title="조사 대상",
+        yaxis_title="5점 척도 평균",
+        yaxis=dict(range=[0, 5], dtick=1),
+        showlegend=False,
+        height=430
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.caption(
+        "※ 평균 점수가 높을수록 해당 문항에 동의하는 정도가 높습니다."
+    )
+
+# ---------------------------------------------
+# 4. 해석할 때 주의할 점
 # ---------------------------------------------
 st.header("4. 해석할 때 주의할 점")
-st.warning(
-    "- 두 문항의 질문 내용이 다릅니다. (방해 vs 성적 하락)\n"
-    "- 조사 대상이 다릅니다. (성인 vs 청소년)\n"
-    "- 인식 조사이므로 '오래 쓰면 공부 시간이 줄어든다'는 인과관계를 증명할 수 없습니다.\n"
-    "- 2015년 자료이므로 현재와 다를 수 있습니다."
-)
+
+st.warning("""
+- 두 문항의 질문 내용이 다릅니다. (공부 방해 vs 성적 하락)
+- 조사 대상이 다릅니다. (성인 vs 청소년)
+- 인식 조사이므로 스마트폰 사용이 공부 시간을 줄인다는 인과관계를 증명할 수 없습니다.
+- 2015년 자료이므로 현재의 상황과 다를 수 있습니다.
+- 긍정 응답 비율은 세부 항목의 합계와 원자료 기재값이 일부 다르므로 확인이 필요합니다.
+""")
 
 st.subheader("✍️ 나의 결론 써보기")
-st.text_area("자료에서 알 수 있는 점과 한계를 직접 써보세요.", height=150)
+
+st.text_area(
+    "자료에서 알 수 있는 점과 한계를 직접 써보세요.",
+    height=150,
+    placeholder="예: 조사 결과에서 알 수 있는 점은 ...이다. "
+                "하지만 이 자료는 ...라는 한계가 있다."
+)
