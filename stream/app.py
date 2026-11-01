@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -34,6 +35,7 @@ data = {
 }
 
 raw = pd.DataFrame(data)
+
 short_names = ["성인(방해)", "청소년(성적 하락)"]
 
 choice_cols = [
@@ -50,32 +52,57 @@ rows_before, cols_before = raw.shape
 
 df = raw.copy()
 
-# 결측치: 빈 값이 있는 행 삭제
 missing_total = int(df.isnull().sum().sum())
-df = df.dropna()
+df = df.dropna().copy()
 
-# 이상치: 비율 열이 0~100%를 벗어나거나, 평균이 1~4점을 벗어나면 삭제
 pct_cols = [c for c in df.columns if c.endswith("(%)")]
-bad_pct = ((df[pct_cols] < 0) | (df[pct_cols] > 100)).any(axis=1)
-bad_mean = (df["4점 평균(점)"] < 1) | (df["4점 평균(점)"] > 4)
+
+bad_pct = (
+    (df[pct_cols] < 0) | (df[pct_cols] > 100)
+).any(axis=1)
+
+bad_mean = (
+    (df["4점 평균(점)"] < 1) |
+    (df["4점 평균(점)"] > 4)
+)
+
 bad_rows = bad_pct | bad_mean
 outlier_total = int(bad_rows.sum())
-df = df[~bad_rows].reset_index(drop=True)
+
+df = df.loc[~bad_rows].reset_index(drop=True)
 
 rows_after, cols_after = df.shape
 
 # ---------------------------------------------
-# 그래프에 쓸 수치 계산
+# 그래프에 사용할 수치 계산
 # ---------------------------------------------
 adult = df.iloc[0]
 teen = df.iloc[1]
 
-adult_pos_sum = round(adult["3 그렇다(%)"] + adult["4 매우 그렇다(%)"], 1)  # 42.1
-teen_pos_sum = round(teen["3 그렇다(%)"] + teen["4 매우 그렇다(%)"], 1)    # 21.3
-adult_pos = adult["긍정(3+4)(%)"]   # 원자료 42.1
-teen_pos = teen["긍정(3+4)(%)"]     # 원자료 21.4
+adult_pos_sum = round(
+    adult["3 그렇다(%)"] + adult["4 매우 그렇다(%)"], 1
+)
+
+teen_pos_sum = round(
+    teen["3 그렇다(%)"] + teen["4 매우 그렇다(%)"], 1
+)
+
+adult_neg_sum = round(
+    adult["1 전혀 그렇지 않다(%)"] +
+    adult["2 그렇지 않다(%)"], 1
+)
+
+teen_neg_sum = round(
+    teen["1 전혀 그렇지 않다(%)"] +
+    teen["2 그렇지 않다(%)"], 1
+)
+
+adult_pos = adult["긍정(3+4)(%)"]
+teen_pos = teen["긍정(3+4)(%)"]
+
 adult_neg = adult["부정(1+2)(%)"]
 teen_neg = teen["부정(1+2)(%)"]
+
 adult_mean = adult["4점 평균(점)"]
 teen_mean = teen["4점 평균(점)"]
 
@@ -84,8 +111,12 @@ chart_layout = {
     "font": {"family": "Arial, sans-serif", "size": 14},
     "paper_bgcolor": "white",
     "plot_bgcolor": "white",
-    "margin": {"l": 30, "r": 30, "t": 45, "b": 45},
-    "legend": {"orientation": "h", "yanchor": "bottom", "y": -0.3},
+    "margin": {"l": 30, "r": 30, "t": 55, "b": 60},
+    "legend": {
+        "orientation": "h",
+        "yanchor": "bottom",
+        "y": -0.35
+    },
     "hovermode": "closest"
 }
 
@@ -99,10 +130,16 @@ c1.metric("행 개수", rows_before)
 c2.metric("열 개수", cols_before)
 
 overview = pd.DataFrame({
-    "자료형": raw.dtypes.astype(str),
-    "빈 값 개수": raw.isnull().sum()
+    "항목": raw.columns,
+    "자료형": raw.dtypes.astype(str).values,
+    "빈 값 개수": raw.isnull().sum().values
 })
-st.dataframe(overview, use_container_width=True)
+
+st.dataframe(
+    overview,
+    use_container_width=True,
+    hide_index=True
+)
 
 # ---------------------------------------------
 # 2. 결측치·이상치 처리
@@ -110,16 +147,21 @@ st.dataframe(overview, use_container_width=True)
 st.header("2. 결측치·이상치 처리")
 
 st.markdown(f"""
-- **결측치:** 열마다 빈 값을 세어 보니 총 {missing_total}개 → 빈 값이 있으면 해당 행 삭제
-- **이상치:** 비율은 0~100%, 평균은 1~4점 범위를 벗어나는 값이 {outlier_total}개 → 있으면 해당 행 삭제
-- **참고:** 자료가 2행짜리 요약표라서 처리할 값이 없었고, 확인한 결과를 아래에 표시했습니다.
+- **결측치:** 빈 값은 총 {missing_total}개입니다.
+- **처리 방법:** 빈 값이 있는 행은 삭제했습니다.
+- **이상치:** 비율은 0~100%, 평균은 1~4점 범위를 벗어나는 값을 확인했습니다.
+- **처리 결과:** 이상치가 {outlier_total}개 발견되어 해당 행을 삭제했습니다.
+- **참고:** 자료가 2행짜리 요약표이므로 분석 결과를 일반화하는 데 한계가 있습니다.
 """)
 
 p1, p2, p3 = st.columns(3)
 p1.metric("처리 전 행 수", rows_before)
 p2.metric("처리 후 행 수", rows_after)
 p3.metric("삭제된 행 수", rows_before - rows_after)
-st.caption(f"열 수: 처리 전 {cols_before}개 → 처리 후 {cols_after}개")
+
+st.caption(
+    f"열 수: 처리 전 {cols_before}개 → 처리 후 {cols_after}개"
+)
 
 # ---------------------------------------------
 # 3. 자료 표
@@ -140,18 +182,18 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("성인")
-    st.metric("긍정 응답(3+4)", f"{adult_pos_sum}%")
-    st.metric("4점 척도 평균", f"{adult_mean}점")
+    st.metric("긍정 응답(3+4)", f"{adult_pos_sum:.1f}%")
+    st.metric("4점 척도 평균", f"{adult_mean:.1f}점")
 
 with col2:
     st.subheader("청소년")
-    st.metric("긍정 응답(3+4)", f"{teen_pos_sum}%")
-    st.metric("4점 척도 평균", f"{teen_mean}점")
+    st.metric("긍정 응답(3+4)", f"{teen_pos_sum:.1f}%")
+    st.metric("4점 척도 평균", f"{teen_mean:.1f}점")
 
 st.caption(
-    "※ 청소년 긍정 응답은 원자료의 세부 비율 합계 "
+    "※ 청소년 긍정 응답은 세부 항목 합계 기준 "
     "19.0% + 2.3% = 21.3%입니다. "
-    "제공된 원자료의 21.4%와 차이가 있어 확인이 필요합니다."
+    "원자료에 기록된 긍정 응답 21.4%와 차이가 있습니다."
 )
 
 # ---------------------------------------------
@@ -166,12 +208,13 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 # ---------------------------------------------
-# 탭 1: 응답 분포 (누적 가로 막대)
+# 그래프 1: 누적 가로 막대그래프
 # ---------------------------------------------
 with tab1:
-    st.subheader("응답 분포 비교")
+    st.subheader("응답 항목별 비율 비교")
 
     fig = go.Figure()
+
     colors = ["#9ECAE1", "#C6DBEF", "#FDAE6B", "#E6550D"]
 
     for col, color in zip(choice_cols, colors):
@@ -183,30 +226,37 @@ with tab1:
             marker_color=color,
             text=df[col].apply(lambda v: f"{v:.1f}%"),
             textposition="inside",
-            hovertemplate="%{y}<br>" + col + ": %{x:.1f}%<extra></extra>"
+            hovertemplate=(
+                "%{y}<br>" + col +
+                ": %{x:.1f}%<extra></extra>"
+            )
         ))
 
     fig.update_layout(
         **chart_layout,
         barmode="stack",
-        title="응답 항목별 비율",
-        xaxis_title="비율(%)",
+        title="성인과 청소년의 응답 항목별 비율",
+        xaxis_title="응답 비율(%)",
         yaxis_title="조사 대상",
         xaxis=dict(range=[0, 100], ticksuffix="%"),
-        height=400
+        height=420
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    st.info(
-        f"**찾아낸 것:** 성인은 '그렇다' 이상이 {adult_pos_sum}%로 "
-        f"청소년 {teen_pos_sum}%보다 {round(adult_pos_sum - teen_pos_sum, 1)}%p 높고, "
-        f"청소년은 '그렇지 않다' 이하가 {round(teen['1 전혀 그렇지 않다(%)'] + teen['2 그렇지 않다(%)'], 1)}%로 가장 많습니다. "
-        f"(근거: 성인 {adult_pos_sum}% vs 청소년 {teen_pos_sum}%, 세부 응답 비율 합계 기준)"
+    st.markdown(
+        f"**찾아낸 것:** 성인은 '그렇다' 이상 응답이 "
+        f"{adult_pos_sum:.1f}%로 청소년의 {teen_pos_sum:.1f}%보다 높다."
+    )
+
+    st.caption(
+        f"근거: 성인 {adult_pos_sum:.1f}%, "
+        f"청소년 {teen_pos_sum:.1f}% "
+        "(세부 응답 항목의 합계 기준)"
     )
 
 # ---------------------------------------------
-# 탭 2: 긍정 vs 부정 (묶음 세로 막대)
+# 그래프 2: 묶은 세로 막대그래프
 # ---------------------------------------------
 with tab2:
     st.subheader("긍정 응답과 부정 응답 비교")
@@ -220,7 +270,9 @@ with tab2:
         marker_color="#6BAED6",
         text=df["부정(1+2)(%)"].apply(lambda v: f"{v:.1f}%"),
         textposition="outside",
-        hovertemplate="%{x}<br>부정 응답: %{y:.1f}%<extra></extra>"
+        hovertemplate=(
+            "%{x}<br>부정 응답: %{y:.1f}%<extra></extra>"
+        )
     ))
 
     fig.add_trace(go.Bar(
@@ -230,69 +282,87 @@ with tab2:
         marker_color="#FD8D3C",
         text=df["긍정(3+4)(%)"].apply(lambda v: f"{v:.1f}%"),
         textposition="outside",
-        hovertemplate="%{x}<br>긍정 응답: %{y:.1f}%<extra></extra>"
+        hovertemplate=(
+            "%{x}<br>긍정 응답: %{y:.1f}%<extra></extra>"
+        )
     ))
 
     fig.update_layout(
         **chart_layout,
         barmode="group",
-        title="긍정 응답과 부정 응답",
+        title="성인과 청소년의 긍정·부정 응답 비교",
         xaxis_title="조사 대상",
-        yaxis_title="비율(%)",
+        yaxis_title="응답 비율(%)",
         yaxis=dict(range=[0, 100], ticksuffix="%"),
-        height=430
+        height=450
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    st.info(
-        f"**찾아낸 것:** 두 집단 모두 부정 응답이 긍정 응답보다 많지만, "
-        f"청소년의 부정 응답({teen_neg}%)이 성인({adult_neg}%)보다 "
-        f"{round(teen_neg - adult_neg, 1)}%p 더 높습니다. "
-        f"(근거: 긍정 응답 성인 {adult_pos}% vs 청소년 {teen_pos}%, 원자료 기준)"
+    st.markdown(
+        f"**찾아낸 것:** 두 집단 모두 부정 응답이 긍정 응답보다 많으며, "
+        f"청소년의 부정 응답 비율이 성인보다 높다."
+    )
+
+    st.caption(
+        f"근거: 성인 부정 {adult_neg:.1f}%, "
+        f"긍정 {adult_pos:.1f}% / "
+        f"청소년 부정 {teen_neg:.1f}%, "
+        f"긍정 {teen_pos:.1f}% (원자료 기준)"
     )
 
 # ---------------------------------------------
-# 탭 3: 평균 점수 (막대)
+# 그래프 3: 점그래프
 # ---------------------------------------------
 with tab3:
     st.subheader("4점 척도 평균 비교")
 
     fig = go.Figure()
 
-    fig.add_trace(go.Bar(
+    fig.add_trace(go.Scatter(
         x=short_names,
         y=df["4점 평균(점)"],
-        marker_color=["#74C476", "#FD8D3C"],
+        mode="markers+lines+text",
+        name="4점 척도 평균",
         text=df["4점 평균(점)"].apply(lambda v: f"{v:.1f}점"),
-        textposition="outside",
-        hovertemplate="%{x}<br>평균: %{y:.1f}점<extra></extra>"
+        textposition="top center",
+        marker=dict(size=14),
+        line=dict(width=2),
+        hovertemplate=(
+            "%{x}<br>평균: %{y:.1f}점<extra></extra>"
+        )
     ))
 
     fig.add_hline(
-        y=2.5, line_dash="dash", line_color="gray",
-        annotation_text="중간값 2.5", annotation_position="top left"
+        y=2.5,
+        line_dash="dash",
+        line_color="gray",
+        annotation_text="중간값 2.5점",
+        annotation_position="bottom right"
     )
 
     fig.update_layout(
         **chart_layout,
-        title="스마트폰 사용에 대한 인식 평균",
+        title="성인과 청소년의 4점 척도 평균",
         xaxis_title="조사 대상",
-        yaxis_title="4점 척도 평균(점)",
-        yaxis=dict(range=[0, 4], dtick=1),
+        yaxis_title="평균 점수(점)",
+        yaxis=dict(range=[0, 4], dtick=0.5),
         showlegend=False,
-        height=430
+        height=450
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    st.info(
-        f"**찾아낸 것:** 두 집단 모두 평균이 중간값 2.5점 아래지만, "
-        f"성인({adult_mean}점)이 청소년({teen_mean}점)보다 {round(adult_mean - teen_mean, 1)}점 높아 "
-        f"방해 정도를 더 크게 느낍니다. "
-        f"(근거: 100점 환산 성인 {adult['100점 환산(점)']}점 vs 청소년 {teen['100점 환산(점)']}점)"
+    st.markdown(
+        f"**찾아낸 것:** 성인의 평균 점수가 청소년보다 "
+        f"{adult_mean - teen_mean:.1f}점 높다."
     )
-    st.caption("※ 평균 점수가 높을수록 해당 문항에 동의하는 정도가 높습니다. (1=전혀 그렇지 않다 ~ 4=매우 그렇다)")
+
+    st.caption(
+        f"근거: 성인 {adult_mean:.1f}점, "
+        f"청소년 {teen_mean:.1f}점. "
+        "점수가 높을수록 해당 문항에 동의하는 정도가 높습니다."
+    )
 
 # ---------------------------------------------
 # 6. 해석할 때 주의할 점
@@ -304,7 +374,7 @@ st.warning("""
 - 조사 대상이 다릅니다. (성인 vs 청소년)
 - 인식 조사이므로 스마트폰 사용이 공부 시간을 줄인다는 인과관계를 증명할 수 없습니다.
 - 2015년 자료이므로 현재의 상황과 다를 수 있습니다.
-- 긍정 응답 비율은 세부 항목의 합계와 원자료 기재값이 일부 다르므로 확인이 필요합니다.
+- 청소년 긍정 응답 비율은 세부 항목 합계와 원자료 기재값이 다르므로 해석에 주의해야 합니다.
 """)
 
 st.subheader("✍️ 나의 결론 써보기")
@@ -312,6 +382,9 @@ st.subheader("✍️ 나의 결론 써보기")
 st.text_area(
     "자료에서 알 수 있는 점과 한계를 직접 써보세요.",
     height=150,
-    placeholder="예: 조사 결과에서 알 수 있는 점은 ...이다. "
-                "하지만 이 자료는 ...라는 한계가 있다."
+    placeholder=(
+        "예: 조사 결과에서 알 수 있는 점은 ...이다. "
+        "하지만 이 자료는 ...라는 한계가 있다."
+    )
 )
+```
