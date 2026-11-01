@@ -2,10 +2,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from pathlib import Path
 
 # ---------------------------------------------
-# 1. 페이지 설정
+# 페이지 기본 설정
 # ---------------------------------------------
 st.set_page_config(
     page_title="스마트폰 사용과 공부",
@@ -14,328 +13,218 @@ st.set_page_config(
 )
 
 st.title("📱 스마트폰 사용은 공부에 방해가 될까?")
-st.caption("자료 출처: 제공된 2015년 성인·청소년 조사 CSV 파일")
+st.caption("자료 출처: 제공된 2015년 조사 자료 2종 (인식 조사)")
 
-BASE_DIR = Path(__file__).parent
+# ---------------------------------------------
+# 데이터
+# ---------------------------------------------
+data = {
+    "구분": [
+        "성인: 스마트폰이 하던 일(공부)에 방해된다",
+        "청소년: 스마트폰 과다 사용으로 성적이 떨어졌다"
+    ],
+    "응답자 수(명)": [13687, 2523],
+    "1 전혀 그렇지 않다(%)": [11.3, 26.9],
+    "2 그렇지 않다(%)": [46.6, 51.7],
+    "3 그렇다(%)": [31.1, 19.0],
+    "4 매우 그렇다(%)": [11.0, 2.3],
+    "긍정(3+4)(%)": [42.1, 21.4],
+    "부정(1+2)(%)": [57.9, 78.6],
+    "4점 평균(점)": [2.4, 2.0],
+    "100점 환산(점)": [47.3, 32.3],
+}
 
-adult_file = BASE_DIR / (
-    "성인_스마트폰_사용이_지금_하고_있는일_공부_에_방해가_된다_20261023093236.csv"
+raw = pd.DataFrame(data)
+
+short_names = ["성인(방해)", "청소년(성적 하락)"]
+
+choice_cols = [
+    "1 전혀 그렇지 않다(%)",
+    "2 그렇지 않다(%)",
+    "3 그렇다(%)",
+    "4 매우 그렇다(%)"
+]
+
+# ---------------------------------------------
+# 결측치·이상치 처리
+# ---------------------------------------------
+rows_before, cols_before = raw.shape
+
+df = raw.copy()
+
+missing_total = int(df.isnull().sum().sum())
+df = df.dropna().copy()
+
+pct_cols = [c for c in df.columns if c.endswith("(%)")]
+
+bad_pct = (
+    (df[pct_cols] < 0) | (df[pct_cols] > 100)
+).any(axis=1)
+
+bad_mean = (
+    (df["4점 평균(점)"] < 1) |
+    (df["4점 평균(점)"] > 4)
 )
 
-teen_file = BASE_DIR / (
-    "청소년_스마트폰의_지나친_사용으로_학교성적이_떨어졌다_20261023093223.csv"
+bad_rows = bad_pct | bad_mean
+outlier_total = int(bad_rows.sum())
+
+df = df.loc[~bad_rows].reset_index(drop=True)
+
+rows_after, cols_after = df.shape
+
+# ---------------------------------------------
+# 그래프에 사용할 수치 계산
+# ---------------------------------------------
+adult = df.iloc[0]
+teen = df.iloc[1]
+
+adult_pos_sum = round(
+    adult["3 그렇다(%)"] + adult["4 매우 그렇다(%)"], 1
 )
 
-# ---------------------------------------------
-# 2. 원본 데이터 읽기
-# ---------------------------------------------
-@st.cache_data
-def load_csv(path):
-    return pd.read_csv(path, encoding="utf-8-sig")
+teen_pos_sum = round(
+    teen["3 그렇다(%)"] + teen["4 매우 그렇다(%)"], 1
+)
 
-try:
-    adult_raw = load_csv(str(adult_file))
-    teen_raw = load_csv(str(teen_file))
+adult_neg_sum = round(
+    adult["1 전혀 그렇지 않다(%)"] +
+    adult["2 그렇지 않다(%)"], 1
+)
 
-except FileNotFoundError as e:
-    st.error("CSV 파일을 찾을 수 없습니다.")
-    st.write("app.py와 CSV 파일 2개가 같은 폴더에 있는지 확인하세요.")
-    st.code(str(e))
-    st.stop()
+teen_neg_sum = round(
+    teen["1 전혀 그렇지 않다(%)"] +
+    teen["2 그렇지 않다(%)"], 1
+)
+
+adult_pos = adult["긍정(3+4)(%)"]
+teen_pos = teen["긍정(3+4)(%)"]
+
+adult_neg = adult["부정(1+2)(%)"]
+teen_neg = teen["부정(1+2)(%)"]
+
+adult_mean = adult["4점 평균(점)"]
+teen_mean = teen["4점 평균(점)"]
+
+# Plotly 그래프 공통 설정
+chart_layout = {
+    "font": {"family": "Arial, sans-serif", "size": 14},
+    "paper_bgcolor": "white",
+    "plot_bgcolor": "white",
+    "margin": {"l": 30, "r": 30, "t": 55, "b": 60},
+    "legend": {
+        "orientation": "h",
+        "yanchor": "bottom",
+        "y": -0.35
+    },
+    "hovermode": "closest"
+}
 
 # ---------------------------------------------
-# 3. 데이터 개요
+# 1. 데이터 개요
 # ---------------------------------------------
 st.header("1. 데이터 개요")
 
-overview_tabs = st.tabs(["성인 자료", "청소년 자료"])
+c1, c2 = st.columns(2)
+c1.metric("행 개수", rows_before)
+c2.metric("열 개수", cols_before)
 
-for tab, raw in zip(
-    overview_tabs,
-    [adult_raw, teen_raw]
-):
-    with tab:
-        c1, c2 = st.columns(2)
-        c1.metric("행 개수", raw.shape[0])
-        c2.metric("열 개수", raw.shape[1])
-
-        overview = pd.DataFrame({
-            "항목": raw.columns.astype(str),
-            "자료형": raw.dtypes.astype(str).values,
-            "빈 값 개수": raw.isnull().sum().values
-        })
-
-        st.dataframe(
-            overview,
-            use_container_width=True,
-            hide_index=True
-        )
-
-        st.caption(
-            f"원본 전체 빈 값: {int(raw.isnull().sum().sum())}개"
-        )
-
-# ---------------------------------------------
-# 4. 원본 표
-# ---------------------------------------------
-st.header("2. 원본 CSV 자료")
-
-with st.expander("성인 원본 표", expanded=True):
-    st.dataframe(
-        adult_raw,
-        use_container_width=True,
-        hide_index=True
-    )
-
-with st.expander("청소년 원본 표", expanded=True):
-    st.dataframe(
-        teen_raw,
-        use_container_width=True,
-        hide_index=True
-    )
-
-# ---------------------------------------------
-# 5. 분석용 자료 만들기
-# ---------------------------------------------
-st.header("3. 결측치·이상치 처리")
-
-# 원본의 실제 조사 결과 행은 마지막 행
-# 첫 번째 열은 조사 대상, 나머지 열은 조사 수치
-def extract_result(raw, group):
-    if raw.empty or len(raw.columns) != 10:
-        raise ValueError(
-            f"{group} 자료의 행 또는 열 구조를 확인해 주세요."
-        )
-
-    row = raw.iloc[-1]
-
-    result = {
-        "조사 대상": group,
-        "응답자 수(명)": row.iloc[1],
-        "전혀 그렇지 않다(%)": row.iloc[2],
-        "그렇지 않다(%)": row.iloc[3],
-        "그렇다(%)": row.iloc[4],
-        "매우 그렇다(%)": row.iloc[5],
-        "긍정 응답(원자료, %)": row.iloc[6],
-        "부정 응답(원자료, %)": row.iloc[7],
-        "5점 평균(점)": row.iloc[8],
-        "100점 평균(점)": row.iloc[9]
-    }
-
-    numeric_columns = list(result.keys())[1:]
-
-    for col in numeric_columns:
-        result[col] = pd.to_numeric(
-            result[col], errors="coerce"
-        )
-
-    return result
-
-
-try:
-    original_results = pd.DataFrame([
-        extract_result(adult_raw, "성인"),
-        extract_result(teen_raw, "청소년")
-    ])
-except ValueError as e:
-    st.error(str(e))
-    st.stop()
-
-numeric_columns = [
-    "응답자 수(명)",
-    "전혀 그렇지 않다(%)",
-    "그렇지 않다(%)",
-    "그렇다(%)",
-    "매우 그렇다(%)",
-    "긍정 응답(원자료, %)",
-    "부정 응답(원자료, %)",
-    "5점 평균(점)",
-    "100점 평균(점)"
-]
-
-percentage_columns = [
-    "전혀 그렇지 않다(%)",
-    "그렇지 않다(%)",
-    "그렇다(%)",
-    "매우 그렇다(%)",
-    "긍정 응답(원자료, %)",
-    "부정 응답(원자료, %)",
-    "100점 평균(점)"
-]
-
-# 분석용 수치 변환 후 결측치 확인
-conversion_missing = int(
-    original_results[numeric_columns].isna().sum().sum()
-)
-
-# 원본 조사 결과는 보존하고, 별도 복사본에서 처리
-analysis_df = original_results.copy()
-
-# 이상치 조건
-bad_percentage = (
-    (analysis_df[percentage_columns] < 0) |
-    (analysis_df[percentage_columns] > 100)
-).any(axis=1)
-
-bad_count = (
-    (analysis_df["응답자 수(명)"] < 0) |
-    analysis_df["응답자 수(명)"].isna()
-)
-
-bad_mean = (
-    (analysis_df["5점 평균(점)"] < 1) |
-    (analysis_df["5점 평균(점)"] > 5) |
-    analysis_df["5점 평균(점)"].isna()
-)
-
-bad_rows = bad_percentage | bad_count | bad_mean
-
-# 결측치가 있거나 이상치로 확인된 집단은 분석에서 제외
-missing_rows = analysis_df[numeric_columns].isna().any(axis=1)
-excluded_rows = bad_rows | missing_rows
-
-analysis_df = analysis_df.loc[
-    ~excluded_rows
-].reset_index(drop=True)
-
-# 처리 결과 표시
-c1, c2, c3 = st.columns(3)
-
-c1.metric(
-    "원본 조사 집단",
-    len(original_results)
-)
-
-c2.metric(
-    "분석 가능 집단",
-    len(analysis_df)
-)
-
-c3.metric(
-    "분석 제외 집단",
-    int(excluded_rows.sum())
-)
-
-st.markdown(f"""
-- **원본 빈 값:** 성인 {int(adult_raw.isnull().sum().sum())}개,
-  청소년 {int(teen_raw.isnull().sum().sum())}개
-- **수치 변환 후 결측치:** {conversion_missing}개
-- **이상치 검사:** 비율 0~100%, 응답자 수 0명 이상,
-  5점 평균 1~5점 범위를 확인했습니다.
-- **처리 방법:** 분석에 필요한 값이 없거나 범위를 벗어난 집단은
-  그래프 분석에서 제외했습니다.
-- **원본 보존:** 원본 표는 수정하거나 삭제하지 않았습니다.
-""")
-
-if conversion_missing == 0 and int(excluded_rows.sum()) == 0:
-    st.success(
-        "검사 결과, 분석용 자료에서 결측치나 범위를 벗어난 값이 발견되지 않았습니다."
-    )
-
-st.subheader("분석용 통합 표")
+overview = pd.DataFrame({
+    "항목": raw.columns,
+    "자료형": raw.dtypes.astype(str).values,
+    "빈 값 개수": raw.isnull().sum().values
+})
 
 st.dataframe(
-    analysis_df,
+    overview,
     use_container_width=True,
     hide_index=True
 )
 
-if len(analysis_df) < 2:
-    st.warning(
-        "두 집단 모두 분석할 수 있어야 비교 그래프를 그릴 수 있습니다. "
-        "원본 CSV를 확인해 주세요."
-    )
-    st.stop()
+# ---------------------------------------------
+# 2. 결측치·이상치 처리
+# ---------------------------------------------
+st.header("2. 결측치·이상치 처리")
+
+st.markdown(f"""
+- **결측치:** 빈 값은 총 {missing_total}개입니다.
+- **처리 방법:** 빈 값이 있는 행은 삭제했습니다.
+- **이상치:** 비율은 0~100%, 평균은 1~4점 범위를 벗어나는 값을 확인했습니다.
+- **처리 결과:** 이상치가 {outlier_total}개 발견되어 해당 행을 삭제했습니다.
+- **참고:** 자료가 2행짜리 요약표이므로 분석 결과를 일반화하는 데 한계가 있습니다.
+""")
+
+p1, p2, p3 = st.columns(3)
+p1.metric("처리 전 행 수", rows_before)
+p2.metric("처리 후 행 수", rows_after)
+p3.metric("삭제된 행 수", rows_before - rows_after)
+
+st.caption(
+    f"열 수: 처리 전 {cols_before}개 → 처리 후 {cols_after}개"
+)
 
 # ---------------------------------------------
-# 6. 핵심 지표
+# 3. 자료 표
+# ---------------------------------------------
+st.header("3. 자료 표")
+
+st.dataframe(
+    df.set_index("구분"),
+    use_container_width=True
+)
+
+# ---------------------------------------------
+# 4. 핵심 지표
 # ---------------------------------------------
 st.header("4. 핵심 지표 비교")
 
-adult = analysis_df[
-    analysis_df["조사 대상"] == "성인"
-].iloc[0]
+col1, col2 = st.columns(2)
 
-teen = analysis_df[
-    analysis_df["조사 대상"] == "청소년"
-].iloc[0]
-
-c1, c2 = st.columns(2)
-
-with c1:
+with col1:
     st.subheader("성인")
-    st.metric(
-        "긍정 응답",
-        f"{adult['긍정 응답(원자료, %)']:.1f}%"
-    )
-    st.metric(
-        "5점 평균",
-        f"{adult['5점 평균(점)']:.1f}점"
-    )
-    st.caption(
-        f"응답자 {int(adult['응답자 수(명)']):,}명"
-    )
+    st.metric("긍정 응답(3+4)", f"{adult_pos_sum:.1f}%")
+    st.metric("4점 척도 평균", f"{adult_mean:.1f}점")
 
-with c2:
+with col2:
     st.subheader("청소년")
-    st.metric(
-        "긍정 응답",
-        f"{teen['긍정 응답(원자료, %)']:.1f}%"
-    )
-    st.metric(
-        "5점 평균",
-        f"{teen['5점 평균(점)']:.1f}점"
-    )
-    st.caption(
-        f"응답자 {int(teen['응답자 수(명)']):,}명"
-    )
+    st.metric("긍정 응답(3+4)", f"{teen_pos_sum:.1f}%")
+    st.metric("4점 척도 평균", f"{teen_mean:.1f}점")
+
+st.caption(
+    "※ 청소년 긍정 응답은 세부 항목 합계 기준 "
+    "19.0% + 2.3% = 21.3%입니다. "
+    "원자료에 기록된 긍정 응답 21.4%와 차이가 있습니다."
+)
 
 # ---------------------------------------------
-# 7. 그래프
+# 5. 그래프
 # ---------------------------------------------
-st.header("5. 그래프 분석")
+st.header("5. 그래프")
 
-chart_layout = {
-    "paper_bgcolor": "white",
-    "plot_bgcolor": "white",
-    "font": {"family": "Arial, sans-serif", "size": 14},
-    "margin": {"l": 35, "r": 35, "t": 60, "b": 60},
-    "height": 430
-}
-
-groups = ["성인", "청소년"]
-
-tabs = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     "응답 분포",
-    "긍정·부정 비교",
+    "긍정 vs 부정",
     "평균 점수"
 ])
 
 # ---------------------------------------------
 # 그래프 1: 누적 가로 막대그래프
 # ---------------------------------------------
-with tabs[0]:
-    st.subheader("응답 항목별 비율")
+with tab1:
+    st.subheader("응답 항목별 비율 비교")
 
     fig = go.Figure()
 
-    response_cols = [
-        ("전혀 그렇지 않다(%)", "#9ECAE1"),
-        ("그렇지 않다(%)", "#C6DBEF"),
-        ("그렇다(%)", "#FDAE6B"),
-        ("매우 그렇다(%)", "#E6550D")
-    ]
+    colors = ["#9ECAE1", "#C6DBEF", "#FDAE6B", "#E6550D"]
 
-    for col, color in response_cols:
+    for col, color in zip(choice_cols, colors):
         fig.add_trace(go.Bar(
-            y=analysis_df["조사 대상"],
-            x=analysis_df[col],
+            y=short_names,
+            x=df[col],
             name=col,
             orientation="h",
             marker_color=color,
-            text=analysis_df[col].map(
-                lambda v: f"{v:.1f}%"
-            ),
+            text=df[col].apply(lambda v: f"{v:.1f}%"),
             textposition="inside",
             hovertemplate=(
                 "%{y}<br>" + col +
@@ -346,167 +235,155 @@ with tabs[0]:
     fig.update_layout(
         **chart_layout,
         barmode="stack",
-        title="성인과 청소년의 응답 분포",
+        title="성인과 청소년의 응답 항목별 비율",
         xaxis_title="응답 비율(%)",
         yaxis_title="조사 대상",
-        xaxis=dict(range=[0, 100], ticksuffix="%")
+        xaxis=dict(range=[0, 100], ticksuffix="%"),
+        height=420
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    adult_agree = (
-        adult["그렇다(%)"] + adult["매우 그렇다(%)"]
-    )
-    teen_agree = (
-        teen["그렇다(%)"] + teen["매우 그렇다(%)"]
-    )
-
     st.markdown(
         f"**찾아낸 것:** 성인은 '그렇다' 이상 응답이 "
-        f"{adult_agree:.1f}%로 청소년의 "
-        f"{teen_agree:.1f}%보다 높다."
+        f"{adult_pos_sum:.1f}%로 청소년의 {teen_pos_sum:.1f}%보다 높다."
     )
 
     st.caption(
-        f"근거: 성인 {adult_agree:.1f}%, "
-        f"청소년 {teen_agree:.1f}% "
-        "(세부 항목 합계 기준)"
+        f"근거: 성인 {adult_pos_sum:.1f}%, "
+        f"청소년 {teen_pos_sum:.1f}% "
+        "(세부 응답 항목의 합계 기준)"
     )
 
 # ---------------------------------------------
 # 그래프 2: 묶은 세로 막대그래프
 # ---------------------------------------------
-with tabs[1]:
+with tab2:
     st.subheader("긍정 응답과 부정 응답 비교")
 
     fig = go.Figure()
 
     fig.add_trace(go.Bar(
-        x=analysis_df["조사 대상"],
-        y=analysis_df["부정 응답(원자료, %)"],
+        x=short_names,
+        y=df["부정(1+2)(%)"],
         name="부정 응답",
         marker_color="#6BAED6",
-        text=analysis_df["부정 응답(원자료, %)"].map(
-            lambda v: f"{v:.1f}%"
-        ),
-        textposition="outside"
+        text=df["부정(1+2)(%)"].apply(lambda v: f"{v:.1f}%"),
+        textposition="outside",
+        hovertemplate=(
+            "%{x}<br>부정 응답: %{y:.1f}%<extra></extra>"
+        )
     ))
 
     fig.add_trace(go.Bar(
-        x=analysis_df["조사 대상"],
-        y=analysis_df["긍정 응답(원자료, %)"],
-        name="긍정 응답",
+        x=short_names,
+        y=df["긍정(3+4)(%)"],
+        name="긍정 응답(원자료)",
         marker_color="#FD8D3C",
-        text=analysis_df["긍정 응답(원자료, %)"].map(
-            lambda v: f"{v:.1f}%"
-        ),
-        textposition="outside"
+        text=df["긍정(3+4)(%)"].apply(lambda v: f"{v:.1f}%"),
+        textposition="outside",
+        hovertemplate=(
+            "%{x}<br>긍정 응답: %{y:.1f}%<extra></extra>"
+        )
     ))
 
     fig.update_layout(
         **chart_layout,
         barmode="group",
-        title="성인과 청소년의 긍정·부정 응답",
+        title="성인과 청소년의 긍정·부정 응답 비교",
         xaxis_title="조사 대상",
         yaxis_title="응답 비율(%)",
-        yaxis=dict(range=[0, 100], ticksuffix="%")
+        yaxis=dict(range=[0, 100], ticksuffix="%"),
+        height=450
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown(
-        "**찾아낸 것:** 두 집단 모두 부정 응답이 "
-        "긍정 응답보다 많다."
+        f"**찾아낸 것:** 두 집단 모두 부정 응답이 긍정 응답보다 많으며, "
+        f"청소년의 부정 응답 비율이 성인보다 높다."
     )
 
     st.caption(
-        f"근거: 성인 부정 {adult['부정 응답(원자료, %)']:.1f}%, "
-        f"긍정 {adult['긍정 응답(원자료, %)']:.1f}% / "
-        f"청소년 부정 {teen['부정 응답(원자료, %)']:.1f}%, "
-        f"긍정 {teen['긍정 응답(원자료, %)']:.1f}%"
+        f"근거: 성인 부정 {adult_neg:.1f}%, "
+        f"긍정 {adult_pos:.1f}% / "
+        f"청소년 부정 {teen_neg:.1f}%, "
+        f"긍정 {teen_pos:.1f}% (원자료 기준)"
     )
 
 # ---------------------------------------------
-# 그래프 3: 점과 선 그래프
+# 그래프 3: 점그래프
 # ---------------------------------------------
-with tabs[2]:
-    st.subheader("5점 평균 비교")
+with tab3:
+    st.subheader("4점 척도 평균 비교")
 
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
-        x=analysis_df["조사 대상"],
-        y=analysis_df["5점 평균(점)"],
+        x=short_names,
+        y=df["4점 평균(점)"],
         mode="markers+lines+text",
-        name="5점 평균",
-        text=analysis_df["5점 평균(점)"].map(
-            lambda v: f"{v:.1f}점"
-        ),
+        name="4점 척도 평균",
+        text=df["4점 평균(점)"].apply(lambda v: f"{v:.1f}점"),
         textposition="top center",
-        marker=dict(size=13),
-        line=dict(width=2)
+        marker=dict(size=14),
+        line=dict(width=2),
+        hovertemplate=(
+            "%{x}<br>평균: %{y:.1f}점<extra></extra>"
+        )
     ))
 
     fig.add_hline(
-        y=3,
+        y=2.5,
         line_dash="dash",
         line_color="gray",
-        annotation_text="중간값 3점"
+        annotation_text="중간값 2.5점",
+        annotation_position="bottom right"
     )
 
     fig.update_layout(
         **chart_layout,
-        title="성인과 청소년의 5점 평균",
+        title="성인과 청소년의 4점 척도 평균",
         xaxis_title="조사 대상",
-        yaxis_title="5점 평균(점)",
-        yaxis=dict(range=[0, 5], dtick=1),
-        showlegend=False
+        yaxis_title="평균 점수(점)",
+        yaxis=dict(range=[0, 4], dtick=0.5),
+        showlegend=False,
+        height=450
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    difference = (
-        adult["5점 평균(점)"] -
-        teen["5점 평균(점)"]
-    )
-
-    direction = (
-        "높다" if difference > 0
-        else "낮다" if difference < 0
-        else "같다"
-    )
-
     st.markdown(
-        f"**찾아낸 것:** 성인의 5점 평균은 청소년보다 "
-        f"{abs(difference):.1f}점 {direction}."
+        f"**찾아낸 것:** 성인의 평균 점수가 청소년보다 "
+        f"{adult_mean - teen_mean:.1f}점 높다."
     )
 
     st.caption(
-        f"근거: 성인 {adult['5점 평균(점)']:.1f}점, "
-        f"청소년 {teen['5점 평균(점)']:.1f}점"
+        f"근거: 성인 {adult_mean:.1f}점, "
+        f"청소년 {teen_mean:.1f}점. "
+        "점수가 높을수록 해당 문항에 동의하는 정도가 높습니다."
     )
 
 # ---------------------------------------------
-# 8. 분석의 한계
+# 6. 해석할 때 주의할 점
 # ---------------------------------------------
 st.header("6. 해석할 때 주의할 점")
 
 st.warning("""
-- 성인 문항은 스마트폰이 공부에 방해되는지 묻습니다.
-- 청소년 문항은 스마트폰 과다 사용으로 성적이 떨어졌는지 묻습니다.
-- 질문 내용과 조사 대상이 다르므로 두 결과를 완전히 같은 의미로 비교하기 어렵습니다.
-- 인식 조사만으로 스마트폰 사용이 공부 시간을 줄이거나 성적을 떨어뜨린다는 인과관계를 증명할 수 없습니다.
-- 2015년 자료이므로 현재 상황과 다를 수 있습니다.
-- 긍정 응답의 원자료 값과 세부 항목 합계에는 반올림 차이가 있을 수 있습니다.
+- 두 문항의 질문 내용이 다릅니다. (공부 방해 vs 성적 하락)
+- 조사 대상이 다릅니다. (성인 vs 청소년)
+- 인식 조사이므로 스마트폰 사용이 공부 시간을 줄인다는 인과관계를 증명할 수 없습니다.
+- 2015년 자료이므로 현재의 상황과 다를 수 있습니다.
+- 청소년 긍정 응답 비율은 세부 항목 합계와 원자료 기재값이 다르므로 해석에 주의해야 합니다.
 """)
 
 st.subheader("✍️ 나의 결론 써보기")
 
 st.text_area(
-    "자료에서 알 수 있는 점과 한계를 작성해 보세요.",
+    "자료에서 알 수 있는 점과 한계를 직접 써보세요.",
     height=150,
     placeholder=(
         "예: 조사 결과에서 알 수 있는 점은 ...이다. "
-        "하지만 두 문항의 질문 내용이 다르다는 한계가 있다."
+        "하지만 이 자료는 ...라는 한계가 있다."
     )
 )
