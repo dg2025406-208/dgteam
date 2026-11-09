@@ -19,6 +19,9 @@ from sklearn.inspection import permutation_importance
 st.set_page_config(page_title="스마트폰 사용과 공부", page_icon="📱", layout="wide")
 
 CSV_PATH = "kyrbs2025_smartphone_study.csv"
+import os
+st.sidebar.write("현재 폴더:", os.getcwd())
+st.sidebar.write("파일 목록:", os.listdir("."))
 RANDOM_STATE = 42
 FINAL_MODEL_NAME = "그래디언트 부스팅"   # 최종 모델 고정
 
