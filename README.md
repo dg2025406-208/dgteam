@@ -19,6 +19,7 @@
 ## 데이터
 
 - 출처(주소): https://kosis.kr/statHtml/statHtml.do?orgId=127&tblId=DT_12019_2015_047&conn_path=I2
+- https://www.kdca.go.kr/yhs/yhs/main.do
 - 기간·행 수·열 수: 2015 한해, 파일당 데이터 1행, 헤더 2줄 별도, 10열
 - 사용한 열:
   - 종합 미디어 사용 시간
